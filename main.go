@@ -35,6 +35,23 @@ func extractVariablesFromLine(line string) []string {
 	return result
 }
 
+// writes current state to output.txt
+func writeDebugInfoToFile(debugInfo map[string]any, lable string) {
+	file, err := os.Create("output.txt")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not create output.txt:: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	fmt.Fprintf(writer, "====== %s ===== \n", lable)
+	for k, v := range debugInfo {
+		fmt.Fprintf(writer, "%s: %v\n", k, v)
+	}
+	writer.Flush()
+}
+
 func main() {
 	vm := goja.New()
 
@@ -49,6 +66,23 @@ func main() {
 		return goja.Undefined()
 	})
 
+	// Define __breakpoint functin inside JS
+	vm.Set("__breakpoint", func(call goja.FunctionCall) goja.Value {
+		fmt.Println("\n  Breakpoint hit!!! current_variables::")
+		// display current_variables
+		for k, v := range debugInfo {
+			fmt.Printf("    %s: %v\n", k, v)
+		}
+		
+		// write snapshot at breakpoint
+		writeDebugInfoToFile(debugInfo, "BREAKPOINT SNAPSHOT")
+
+		fmt.Println("\n ||> Press Enter to continue...")
+		bufio.NewReader(os.Stdin).ReadBytes('\n')
+		
+		return goja.Undefined()
+	})
+
 	// Load JS
 	scriptBytes, err := os.ReadFile("script.js")
 	if err != nil {
@@ -58,7 +92,6 @@ func main() {
 	lines := strings.Split(string(scriptBytes), "\n")
 
 	var instrumentedCode strings.Builder
-
 	for _, line := range lines {
 		vars := extractVariablesFromLine(line)
 
@@ -76,25 +109,20 @@ func main() {
 	// print what code is being executed
 	fmt.Println(instrumentedCode.String())
 
+	// Run instrumentedCode
 	_, err = vm.RunString(instrumentedCode.String())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "JS Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Write debug info to file
-	file, err := os.Create("output.txt")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not create output.txt: %v\n", err)
-		os.Exit(1)
-	}
-	defer file.Close()
+	// Write final snapshot
+	writeDebugInfoToFile(debugInfo, "FINAL SNAPSHOT")
 
-	writer := bufio.NewWriter(file)
+	fmt.Println("\n ||> FINAL SNAPSHOTJ")
 	for k, v := range debugInfo {
-		fmt.Fprintf(writer, "%s: %v\n", k, v)
+		fmt.Printf("\n   %s: %v", k, v)
 	}
-	writer.Flush()
 
-	fmt.Println("Finished. See output.txt.")
+	fmt.Println("\n --------- Finished. See output.txt. ---------")
 }
