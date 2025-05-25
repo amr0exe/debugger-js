@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/console"
+	"github.com/dop251/goja_nodejs/require"
+	"github.com/dop251/goja_nodejs/eventloop"
 )
 
 // 
@@ -36,7 +39,7 @@ func extractVariablesFromLine(line string) []string {
 }
 
 // writes current state to output.txt
-func writeDebugInfoToFile(debugInfo map[string]any, lable string) {
+func writeDebugInfoToFile(debugInfo map[string]any, label string) {
 	file, err := os.Create("output.txt")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not create output.txt:: %v\n", err)
@@ -45,7 +48,7 @@ func writeDebugInfoToFile(debugInfo map[string]any, lable string) {
 	defer file.Close()
 
 	writer := bufio.NewWriter(file)
-	fmt.Fprintf(writer, "====== %s ===== \n", lable)
+	fmt.Fprintf(writer, "====== %s ===== \n", label)
 	for k, v := range debugInfo {
 		fmt.Fprintf(writer, "%s: %v\n", k, v)
 	}
@@ -53,76 +56,85 @@ func writeDebugInfoToFile(debugInfo map[string]any, lable string) {
 }
 
 func main() {
-	vm := goja.New()
+	loop := eventloop.NewEventLoop()
+	loop.Start()
+	defer loop.Stop()
 
-	// debug variable store
-	debugInfo := make(map[string]any)
+	loop.RunOnLoop(func(vm *goja.Runtime) {
+		registry := require.NewRegistry(require.WithGlobalFolders("."))
+		registry.Enable(vm)
 
-	// Define debug function inside JS
-	vm.Set("debug", func(call goja.FunctionCall) goja.Value {
-		name := call.Argument(0).String()
-		value := call.Argument(1).Export()
-		debugInfo[name] = value
-		return goja.Undefined()
-	})
+		console.Enable(vm)
 
-	// Define __breakpoint functin inside JS
-	vm.Set("__breakpoint", func(call goja.FunctionCall) goja.Value {
-		fmt.Println("\n  Breakpoint hit!!! current_variables::")
-		// display current_variables
-		for k, v := range debugInfo {
-			fmt.Printf("    %s: %v\n", k, v)
-		}
-		
-		// write snapshot at breakpoint
-		writeDebugInfoToFile(debugInfo, "BREAKPOINT SNAPSHOT")
+		// debug variable store
+		debugInfo := make(map[string]any)
 
-		fmt.Println("\n ||> Press Enter to continue...")
-		bufio.NewReader(os.Stdin).ReadBytes('\n')
-		
-		return goja.Undefined()
-	})
+		// Define debug function inside JS
+		vm.Set("debug", func(call goja.FunctionCall) goja.Value {
+			name := call.Argument(0).String()
+			value := call.Argument(1).Export()
+			debugInfo[name] = value
+			return goja.Undefined()
+		})
 
-	// Load JS
-	scriptBytes, err := os.ReadFile("script.js")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read script.js: %v\n", err)
-		os.Exit(1)
-	}
-	lines := strings.Split(string(scriptBytes), "\n")
-
-	var instrumentedCode strings.Builder
-	for _, line := range lines {
-		vars := extractVariablesFromLine(line)
-
-		if len(vars) > 0 {
-			instrumentedCode.WriteString(line)
-			for _, v := range vars {
-				instrumentedCode.WriteString(fmt.Sprintf("; debug(\"%s\", %s)", v, v))
+		// Define __breakpoint function inside JS
+		vm.Set("__breakpoint", func(call goja.FunctionCall) goja.Value {
+			fmt.Println("\n  Breakpoint hit!!! current_variables::")
+			// display current_variables
+			for k, v := range debugInfo {
+				fmt.Printf("    %s: %v\n", k, v)
 			}
-			instrumentedCode.WriteString("\n")
-		} else {
-			instrumentedCode.WriteString(line + "\n")
+			
+			// write snapshot at breakpoint
+			writeDebugInfoToFile(debugInfo, "BREAKPOINT SNAPSHOT")
+
+			fmt.Println("\n ||> Press Enter to continue...")
+			bufio.NewReader(os.Stdin).ReadBytes('\n')
+			
+			return goja.Undefined()
+		})
+
+		// Load JS
+		scriptBytes, err := os.ReadFile("script.js")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read script.js: %v\n", err)
+			os.Exit(1)
 		}
-	}
+		lines := strings.Split(string(scriptBytes), "\n")
 
-	// print what code is being executed
-	fmt.Println(instrumentedCode.String())
+		var instrumentedCode strings.Builder
+		for _, line := range lines {
+			vars := extractVariablesFromLine(line)
 
-	// Run instrumentedCode
-	_, err = vm.RunString(instrumentedCode.String())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "JS Error: %v\n", err)
-		os.Exit(1)
-	}
+			if len(vars) > 0 {
+				instrumentedCode.WriteString(line)
+				for _, v := range vars {
+					instrumentedCode.WriteString(fmt.Sprintf("; debug(\"%s\", %s)", v, v))
+				}
+				instrumentedCode.WriteString("\n")
+			} else {
+				instrumentedCode.WriteString(line + "\n")
+			}
+		}
 
-	// Write final snapshot
-	writeDebugInfoToFile(debugInfo, "FINAL SNAPSHOT")
+		// print what code is being executed
+		fmt.Println(instrumentedCode.String())
 
-	fmt.Println("\n ||> FINAL SNAPSHOTJ")
-	for k, v := range debugInfo {
-		fmt.Printf("\n   %s: %v", k, v)
-	}
+		// Run instrumentedCode
+		_, err = vm.RunString(instrumentedCode.String())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "JS Error: %v\n", err)
+			os.Exit(1)
+		}
 
-	fmt.Println("\n --------- Finished. See output.txt. ---------")
+		// Write final snapshot
+		writeDebugInfoToFile(debugInfo, "FINAL SNAPSHOT")
+
+		fmt.Println("\n ||> FINAL SNAPSHOTJ")
+		for k, v := range debugInfo {
+			fmt.Printf("\n   %s: %v", k, v)
+		}
+
+		fmt.Println("\n --------- Finished. See output.txt. ---------")
+	})
 }
