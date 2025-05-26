@@ -1,12 +1,16 @@
-====== FINAL SNAPSHOT ===== 
-bd: df
+=== FINAL SNAPSHOT ===
+i: 0
 ds: <nil>
-calm: cav
-bds: 7
-drd: 7
-aaa: <nil>
 afasdf: <nil>
-abj: encore
-dd: dd
+calm: cav
 c: 10
+abj: encore
+ded: 5
+fed: 12
 b: 10
+bd: df
+drd: 7
+dd: dd
+aaa: <nil>
+bds: 7
+mainDED: 11

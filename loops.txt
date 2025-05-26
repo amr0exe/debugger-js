@@ -1,0 +1,15 @@
+=== LOOP ANALYSIS ===
+
+Loop 1:
+Type: for
+Variables in scope: {
+  [ded, 5],
+  [mainDED, 11],
+}
+
+Loop 2:
+Type: while
+Variables in scope: {
+  [fed, 12],
+}
+
